@@ -3,6 +3,7 @@
 #include <vector>
 #include <utility>
 #include <iostream>
+#include <iomanip>
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 
@@ -12,13 +13,15 @@ typedef unsigned char uchar_t;
 void print_img(const cv::Mat& image)
 {
     std::cout << std::endl;
+    auto old = std::cout.width();
     for (int i = 0; i < image.rows; i++)
     {
         for(int j = 0; j < image.cols; j++)
-            std::cout << (int)image.at<uchar_t>(i, j) << " ";
+            std::cout << std::setw(4) << std::setiosflags(std::ios::right)
+                      << (int)image.at<uchar_t>(i, j);
         std::cout << std::endl;
     }
-    std::cout << std::endl;
+    std::cout << std::setw(old) << std::endl;
 }
 //-------------------------------------------------------------------------
 void display(const std::string& windowname, const cv::Mat& image)
@@ -61,15 +64,23 @@ int connectivity(const cv::Mat& image, const Point& point)
 //-------------------------------------------------------------------------
 void delete_pixels(cv::Mat& image, std::set<Point>& points)
 {
-    for (auto it = points.begin(); it != points.end(); it++)
+    for (auto& point : points)
     {
-        image.at<uchar_t>(it->first, it->second) = 0;
+        image.at<uchar_t>(point.first, point.second) = 0;
     }
     points.clear();
 }
 //-------------------------------------------------------------------------
-void thin(cv::Mat& image)
+void thin(cv::Mat& img)
 {
+    cv::Mat image = cv::Mat::ones(img.rows + 2, img.cols + 2, CV_8U);
+    for (int i = 0; i < img.rows; i++)
+    {
+        for (int j = 0; j < img.cols; j++)
+        {
+            image.at<uchar_t>(i + 1, j + 1) = img.at<uchar_t>(i, j);
+        }
+    }
     for (int i = 0; i < image.rows; i++)
     {
         for (int j = 0; j < image.cols; j++)
@@ -139,14 +150,14 @@ void thin(cv::Mat& image)
         delete_pixels(image, points);
     }
 
-    for (int i = 0; i < image.rows; i++)
+    for (int i = 0; i < img.rows; i++)
     {
-        for (int j = 0; j < image.cols; j++)
+        for (int j = 0; j < img.cols; j++)
         {
-            if (image.at<uchar_t>(i, j) > 0)
-                image.at<uchar_t>(i, j) = 0;
+            if (image.at<uchar_t>(i + 1, j + 1) > 0)
+                img.at<uchar_t>(i, j) = 0;
             else
-                image.at<uchar_t>(i, j) = 255;
+                img.at<uchar_t>(i, j) = 255;
         }
     }
 }
@@ -171,7 +182,16 @@ int main(int argc, char *argv[])
     // delete_pixels(image, points);
     // print_img(image);
     // std::cout << "again passing to thin()" << std::endl;
+    // cv::Mat image = (cv::Mat_<uchar_t>(6, 6) << 0, 0, 0, 1, 1, 1,
+    //                                             1, 0, 0, 0, 1, 1,
+    //                                             1, 1, 0, 0, 0, 1,
+    //                                             1, 1, 1, 0, 0, 0,
+    //                                             0, 0, 0, 0, 0, 0,
+    //                                             0, 0, 0, 0, 0, 0);
+    // 
+    // print_img(image);
     // thin(image);
+    // print_img(image);
     cv::Mat image = cv::imread(argv[1], 0);
     cv::Mat dst = image.clone();    
     thin(dst);
