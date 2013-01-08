@@ -1,6 +1,6 @@
 CC=g++
 CFLAGS=-std=c++11 -Wall $$(pkg-config --cflags --libs opencv)
-CFLAGSDEBUG=$(CFLAGS) -ggdb
+CFLAGSDEBUG=$(CFLAGS) -ggdb -O0
 PROGNAME=zhangsuen
 PROGDEBUG=zhangsuendebug
 
