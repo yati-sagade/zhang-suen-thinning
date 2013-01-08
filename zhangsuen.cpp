@@ -105,6 +105,8 @@ void remove_staircases(cv::Mat& image)
         {
             for (int j = 1; j < image.cols - 1; j++)
             {
+                int c = image.at<uchar_t>(i, j);
+                if (!c) continue;
                 int e = image.at<uchar_t>(i, j + 1),
                     ne = image.at<uchar_t>(i - 1, j + 1),
                     n = image.at<uchar_t>(i - 1, j),
@@ -112,8 +114,8 @@ void remove_staircases(cv::Mat& image)
                     w = image.at<uchar_t>(i, j - 1),
                     sw = image.at<uchar_t>(i + 1, j - 1),
                     s = image.at<uchar_t>(i + 1, j),
-                    se = image.at<uchar_t>(i + 1, j + 1),
-                    c = image.at<uchar_t>(i, j);
+                    se = image.at<uchar_t>(i + 1, j + 1);
+
                 if (i == 0)
                 {
                     // North biased staircase removal
@@ -141,8 +143,23 @@ void remove_staircases(cv::Mat& image)
     }
 }
 //-------------------------------------------------------------------------
-void thin(cv::Mat& img, bool destair=false)
+void thin(cv::Mat& img, bool need_boundary_smoothing=false,
+          bool need_acute_angle_emphasis=false, bool destair=false)
 {
+    // Make everything either 0 or 1. Though we expect a bilevel image, 
+    // the high level (white) can also be 255 rather than 1.
+    for (int i = 0; i < img.rows; i++)
+        for (int j = 0; j < img.cols; j++)
+            img.at<uchar_t>(i, j) = (uchar_t)(img.at<uchar_t>(i, j) != 0);
+   
+    // Stentiford Boundary smoothing to reduce line fuzz.
+    if (need_boundary_smoothing)
+        boundary_smooth(img);
+    // Acute Angle Emphasis to curb necking.
+    if (need_acute_angle_emphasis)
+        acute_angle_emphasis(img);
+    // If our input image is M x N, create a M + 2 x N + 2 image that is
+    // essentially the same image, bordered by 1(white) pixels.
     cv::Mat image = cv::Mat::ones(img.rows + 2, img.cols + 2, CV_8U);
     for (int i = 0; i < img.rows; i++)
     {
@@ -151,6 +168,8 @@ void thin(cv::Mat& img, bool destair=false)
             image.at<uchar_t>(i + 1, j + 1) = img.at<uchar_t>(i, j);
         }
     }
+    // The actual zhangsuen thinning procedure would like the black pixels to
+    // be 1 and white pixels to be 0. So do that.
     for (int i = 0; i < image.rows; i++)
     {
         for (int j = 0; j < image.cols; j++)
@@ -161,7 +180,28 @@ void thin(cv::Mat& img, bool destair=false)
                 image.at<uchar_t>(i, j) = 1;
         }
     }
-
+    // Now call the actual thinning routine.
+    zhangsuen_thin(image);
+    // Holt's staircase removal
+    if (destair)
+        remove_staircases(image);
+    // Remember in the image we have, 1 means black and 0 means white. We need
+    // to restore that to where 255 means white(background) and 0 means
+    // black(object).
+    for (int i = 0; i < img.rows; i++)
+    {
+        for (int j = 0; j < img.cols; j++)
+        {
+            if (image.at<uchar_t>(i + 1, j + 1) > 0)
+                img.at<uchar_t>(i, j) = 0;
+            else
+                img.at<uchar_t>(i, j) = 255;
+        }
+    }
+}
+//-------------------------------------------------------------------------
+void zhangsuen_thin(cv::Mat& image)
+{
     while (true)
     {
         std::set<Point> points;
@@ -218,20 +258,6 @@ void thin(cv::Mat& img, bool destair=false)
         if (points.size() == 0)
             break;
         delete_pixels(image, points);
-    }
-
-    if (destair)
-        remove_staircases(image);
-
-    for (int i = 0; i < img.rows; i++)
-    {
-        for (int j = 0; j < img.cols; j++)
-        {
-            if (image.at<uchar_t>(i + 1, j + 1) > 0)
-                img.at<uchar_t>(i, j) = 0;
-            else
-                img.at<uchar_t>(i, j) = 255;
-        }
     }
 }
 //-------------------------------------------------------------------------
@@ -304,7 +330,7 @@ void print_vec(const std::vector<uchar_t>& values)
     std::cout << std::endl;
 }
 //-------------------------------------------------------------------------
-bool match(const cv::Mat& image, const std::vector<Point>& points,
+bool match(const cv::Mat& image, const std::vector<uchar_t>& points,
            const std::vector<uchar_t>& values)
 {
     bool m = true;
@@ -312,15 +338,14 @@ bool match(const cv::Mat& image, const std::vector<Point>& points,
     {
         if (values[i] == 2)
             continue;
-        Point pt = points[i];
         switch (values[i])
         {
         case 0:
-            if (image.at<uchar_t>(pt.first, pt.second) != 0)
+            if (points[i] != 0)
                 m = false;
             break;
         case 1:
-            if (image.at<uchar_t>(pt.first, pt.second) != 1)
+            if (points[i] != 1)
                 m = false;
             break;
         }
@@ -332,15 +357,23 @@ bool match(const cv::Mat& image, const std::vector<Point>& points,
 bool match_templates(const cv::Mat& image, const Point& point, int k)
 {
     int r = point.first, c = point.second;
-    std::vector<Point> points = {
-    {r - 2, c - 2}, {r - 2, c - 1}, {r - 2, c}, {r - 2, c + 1}, {r - 2, c + 2},
-    {r - 1, c - 2}, {r - 1, c - 1}, {r - 1, c}, {r - 1, c + 1}, {r - 1, c + 2},
-    {r, c - 2}, {r, c - 1}, {r, c}, {r, c + 1}, {r, c + 2},
-    {r + 1, c - 2}, {r + 1, c - 1}, {r + 1, c}, {r + 1, c + 1}, {r + 1, c + 2},
-    {r + 2, c - 2}, {r + 2, c - 1}, {r + 2, c}, {r + 2, c + 1}, {r + 2, c + 2}
+    std::vector<uchar_t> points = {
+    image.at<uchar_t>(r - 2, c - 2), image.at<uchar_t>(r - 2, c - 1),
+    image.at<uchar_t>(r - 2, c), image.at<uchar_t>(r - 2, c + 1), 
+    image.at<uchar_t>(r - 2, c + 2), image.at<uchar_t>(r - 1, c - 2), 
+    image.at<uchar_t>(r - 1, c - 1), image.at<uchar_t>(r - 1, c),
+    image.at<uchar_t>(r - 1, c + 1), image.at<uchar_t>(r - 1, c + 2),
+    image.at<uchar_t>(r, c - 2), image.at<uchar_t>(r, c - 1),
+    image.at<uchar_t>(r, c), image.at<uchar_t>(r, c + 1),
+    image.at<uchar_t>(r, c + 2), image.at<uchar_t>(r + 1, c - 2),
+    image.at<uchar_t>(r + 1, c - 1), image.at<uchar_t>(r + 1, c),
+    image.at<uchar_t>(r + 1, c + 1), image.at<uchar_t>(r + 1, c + 2),
+    image.at<uchar_t>(r + 2, c - 2), image.at<uchar_t>(r + 2, c - 1), 
+    image.at<uchar_t>(r + 2, c), image.at<uchar_t>(r + 2, c + 1), 
+    image.at<uchar_t>(r + 2, c + 2)
     };
     // 0 = zero
-    // 1 = nonzer0
+    // 1 = one 
     // 2 = don't care
     // D1
     std::vector<uchar_t> values = {
@@ -461,43 +494,10 @@ int count_pixels(const cv::Mat& image, uchar_t value)
 //-------------------------------------------------------------------------
 int main(int argc, char *argv[]) 
 {
-    // cv::Mat image = (cv::Mat_<uchar_t>(3, 3) << 0, 1, 1, 
-    //                                             0, 1, 0, 
-    //                                             1, 1, 1);
-    // std::cout << num_one_pixel_neighbours(image, {1, 1}) << std::endl;
-    // std::cout << connectivity(image, {1, 1}) << std::endl;
-    // print_img(image);
-    // std::set<Point> points = {
-    //     {0, 0}, 
-    //     {1, 0},
-    //     {1, 1},
-    //     {2, 2}
-    // };
-    // std::cout << "passing to thin()" << std::endl;
-    // thin(image);
-    // std::cout << "Deleting a few points" << std::endl;
-    // delete_pixels(image, points);
-    // print_img(image);
-    // std::cout << "again passing to thin()" << std::endl;
-    // cv::Mat image = (cv::Mat_<uchar_t>(6, 6) << 0, 0, 0, 1, 1, 1,
-    //                                             1, 0, 0, 0, 1, 1,
-    //                                             1, 1, 0, 0, 0, 1,
-    //                                             1, 1, 1, 0, 0, 0,
-    //                                             0, 0, 0, 0, 0, 0,
-    //                                             0, 0, 0, 0, 0, 0);
-    // 
-    // print_img(image);
-    // thin(image);
-    // print_img(image);
-    //
     cv::Mat image = cv::imread(argv[1], 0);
-    for (int i = 0; i < image.rows; i++)
-        for (int j = 0; j < image.cols; j++)
-            image.at<uchar_t>(i, j) = (uchar_t)(image.at<uchar_t>(i, j) != 0);
     cv::Mat dst = image.clone();    
-    acute_angle_emphasis(dst);
-    boundary_smooth(dst);
-    thin(dst, true);
+    bool aae = true, smooth = true, destair = true;
+    thin(dst, smooth, aae, destair);
     std::cout << "Number of black pixels" << std::endl
               << "\t in the original image: " << count_pixels(image, 0)
               << std::endl << "\t in the resultant" << count_pixels(dst, 0)
@@ -505,15 +505,6 @@ int main(int argc, char *argv[])
     display("Original", image);
     display("Thinned", dst);
     cv::waitKey(0);
-    // cv::Mat image = cv::Mat::zeros(5, 5, CV_8U);
-    // for (int i = 0; i < 5; i++)
-    //     for (int j = 0; j < 5; j++)
-    //     {
-    //         unsigned v;
-    //         std::cin >> v;
-    //         image.at<uchar_t>(i, j) = (uchar_t) v;
-    //     }
-    // match_templates(image, {2, 2}, 5);
     return 0;
 }
 
