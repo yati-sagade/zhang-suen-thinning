@@ -1,21 +1,21 @@
 CC=g++
-CFLAGS=-std=c++11 -Wall $$(pkg-config --cflags --libs opencv)
+CFLAGS=-std=c++11 -Wall -c $$(pkg-config --cflags opencv)
 CFLAGSDEBUG=$(CFLAGS) -ggdb -O0
-PROGNAME=zhangsuen
-PROGDEBUG=zhangsuendebug
+LIBNAME=zhangsuen.a
+LIBDEBUG=zhangsuendebug.a
 
-all: $(PROGNAME)
+all: $(LIBNAME)
 
-debug: $(PROGDEBUG)
+debug: $(LIBDEBUG)
 
 clean: 
-	rm -f zhangsuen
+	rm -f $(LIBNAME)
 
-$(PROGNAME): zhangsuen.cpp zhangsuen.h
-	$(CC) $(CFLAGS) zhangsuen.cpp -o $(PROGNAME)
+$(LIBNAME): zhangsuen.cpp zhangsuen.h
+	$(CC) $(CFLAGS) zhangsuen.cpp -o $(LIBNAME)
 
-$(PROGDEBUG): zhangsuen.cpp zhangsuen.h
-	$(CC) $(CFLAGSDEBUG) zhangsuen.cpp -o $(PROGNAME)
+$(LIBDEBUG): zhangsuen.cpp zhangsuen.h
+	$(CC) $(CFLAGSDEBUG) zhangsuen.cpp -o $(LIBNAME)
 
 
 

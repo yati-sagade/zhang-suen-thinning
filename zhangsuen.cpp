@@ -1,26 +1,6 @@
 #include "zhangsuen.h"
 
 //-------------------------------------------------------------------------
-void print_img(const cv::Mat& image)
-{
-    std::cout << std::endl;
-    auto old = std::cout.width();
-    for (int i = 0; i < image.rows; i++)
-    {
-        for(int j = 0; j < image.cols; j++)
-            std::cout << std::setw(4) << std::setiosflags(std::ios::right)
-                      << (int)image.at<uchar_t>(i, j);
-        std::cout << std::endl;
-    }
-    std::cout << std::setw(old) << std::endl;
-}
-//-------------------------------------------------------------------------
-void display(const std::string& windowname, const cv::Mat& image)
-{
-    cv::namedWindow(windowname);
-    cv::imshow(windowname, image);
-}
-//-------------------------------------------------------------------------
 int num_one_pixel_neighbours(const cv::Mat& image, const Point& point)
 {
     int ret = 0, r = point.first, c = point.second;
@@ -319,16 +299,6 @@ void acute_angle_emphasis(cv::Mat& image)
         points.clear();
     }
 }
-//------------------------------------------------------------------------
-void print_vec(const std::vector<uchar_t>& values)
-{
-    for (int i = 0; i < 25; i++)
-    {
-            if (i % 5 == 0) std::cout << std::endl;
-            std::cout << (int)values[i] << " ";
-    }
-    std::cout << std::endl;
-}
 //-------------------------------------------------------------------------
 bool match(const cv::Mat& image, const std::vector<uchar_t>& points,
            const std::vector<uchar_t>& values)
@@ -480,31 +450,5 @@ bool match_templates(const cv::Mat& image, const Point& point, int k)
 
     }
     return false;
-}
-//-------------------------------------------------------------------------
-int count_pixels(const cv::Mat& image, uchar_t value)
-{
-    int ret = 0;
-    for (int i = 0; i < image.rows; i++)
-        for (int j = 0; j < image.cols; j++)
-            if (image.at<uchar_t>(i, j) == value)
-                ret++;
-    return ret;
-}
-//-------------------------------------------------------------------------
-int main(int argc, char *argv[]) 
-{
-    cv::Mat image = cv::imread(argv[1], 0);
-    cv::Mat dst = image.clone();    
-    bool aae = true, smooth = true, destair = true;
-    thin(dst, smooth, aae, destair);
-    std::cout << "Number of black pixels" << std::endl
-              << "\t in the original image: " << count_pixels(image, 0)
-              << std::endl << "\t in the resultant" << count_pixels(dst, 0)
-              << std::endl;
-    display("Original", image);
-    display("Thinned", dst);
-    cv::waitKey(0);
-    return 0;
 }
 
