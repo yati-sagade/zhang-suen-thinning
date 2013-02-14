@@ -129,8 +129,11 @@ void thin(cv::Mat& img, bool need_boundary_smoothing=false,
     // Make everything either 0 or 1. Though we expect a bilevel image, 
     // the high level (white) can also be 255 rather than 1.
     for (int i = 0; i < img.rows; i++)
-        for (int j = 0; j < img.cols; j++)
-            img.at<uchar_t>(i, j) = (uchar_t)(img.at<uchar_t>(i, j) != 0);
+    {
+        uchar_t *iter = img.ptr<uchar_t>(i);
+        for (int j = 0; j < img.cols; j++, iter++)
+            *iter = (uchar_t)(*iter != 0);
+    }
    
     // Stentiford Boundary smoothing to reduce line fuzz.
     if (need_boundary_smoothing)
@@ -143,21 +146,26 @@ void thin(cv::Mat& img, bool need_boundary_smoothing=false,
     cv::Mat image = cv::Mat::ones(img.rows + 2, img.cols + 2, CV_8U);
     for (int i = 0; i < img.rows; i++)
     {
+        uchar_t *src_iter = img.ptr<uchar_t>(i),
+                *dst_iter = image.ptr<uchar_t>(i + 1);
+        // Advance from the 0th to the 1st column.
+        ++dst_iter;
         for (int j = 0; j < img.cols; j++)
         {
-            image.at<uchar_t>(i + 1, j + 1) = img.at<uchar_t>(i, j);
+            *dst_iter++ = *src_iter++;
         }
     }
     // The actual zhangsuen thinning procedure would like the black pixels to
     // be 1 and white pixels to be 0. So do that.
     for (int i = 0; i < image.rows; i++)
     {
-        for (int j = 0; j < image.cols; j++)
+        uchar_t *iter = image.ptr<uchar_t>(i);
+        for (int j = 0; j < image.cols; j++, iter++)
         {
-            if (image.at<uchar_t>(i, j) > 0)
-                image.at<uchar_t>(i, j) = 0;
+            if (*iter > 0)
+                *iter = 0;
             else
-                image.at<uchar_t>(i, j) = 1;
+                *iter = 1;
         }
     }
     // Now call the actual thinning routine.
@@ -170,12 +178,12 @@ void thin(cv::Mat& img, bool need_boundary_smoothing=false,
     // black(object).
     for (int i = 0; i < img.rows; i++)
     {
+        uchar_t *dst_iter = img.ptr<uchar_t>(i),
+                *src_iter = image.ptr<uchar_t>(i + 1);
+        ++src_iter;
         for (int j = 0; j < img.cols; j++)
         {
-            if (image.at<uchar_t>(i + 1, j + 1) > 0)
-                img.at<uchar_t>(i, j) = 0;
-            else
-                img.at<uchar_t>(i, j) = 255;
+            *dst_iter++ = (*src_iter++ > 0) ? 0 : 255;
         }
     }
 }
