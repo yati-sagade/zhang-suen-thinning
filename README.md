@@ -16,7 +16,9 @@ Prerequisites
 
 
     $ git clone https://github.com/yati-sagade/zhang-suen-thinning.git
+
     $ cd zhang-suen-thinning
+
 
 ### Building
 
@@ -65,8 +67,6 @@ importable from Python:
 
 #### Arguments
 
-    Perform Zhang-Suen thinning, optionally with some pre and post processing.
-
     img: The input grayscale(ideally binarized) image (A `numpy.ndarray` in
          Python). Thinning is performed in place in C++ and a new `numpy.ndarray`
          object holding the thinned image is returned in Python. 
@@ -87,11 +87,11 @@ importable from Python:
                                angle joint to white. This operation is known as
                                acute-angle emphasis.
 
-    destair: Whether to perform Holt\'s destairing pre processing operation.
+    destair: Whether to perform Holt's destairing pre processing operation.
 
              Sometimes, after thinning, there still are pixels that could be
              removed. Many of such removable pixels form staircases in oblique
-             lines. Holt\'s post processing, called destairing, attempts to
+             lines. Holt's post processing, called destairing, attempts to
              delete such points which, when removed, do not affect the
              connectivity or shape information of the skeleton.
 
