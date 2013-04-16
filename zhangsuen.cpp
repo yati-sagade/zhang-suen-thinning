@@ -134,13 +134,6 @@ void thin(cv::Mat& img, bool need_boundary_smoothing=false,
         for (int j = 0; j < img.cols; j++, iter++)
             *iter = (uchar_t)(*iter != 0);
     }
-   
-    // Stentiford Boundary smoothing to reduce line fuzz.
-    if (need_boundary_smoothing)
-        boundary_smooth(img);
-    // Acute Angle Emphasis to curb necking.
-    if (need_acute_angle_emphasis)
-        acute_angle_emphasis(img);
     // If our input image is M x N, create a M + 2 x N + 2 image that is
     // essentially the same image, bordered by 1(white) pixels.
     cv::Mat image = cv::Mat::ones(img.rows + 2, img.cols + 2, CV_8U);
@@ -155,6 +148,12 @@ void thin(cv::Mat& img, bool need_boundary_smoothing=false,
             *dst_iter++ = *src_iter++;
         }
     }
+    // Stentiford Boundary smoothing to reduce line fuzz.
+    if (need_boundary_smoothing)
+        boundary_smooth(image);
+    // Acute Angle Emphasis to curb necking.
+    if (need_acute_angle_emphasis)
+        acute_angle_emphasis(image);
     // The actual zhangsuen thinning procedure would like the black pixels to
     // be 1 and white pixels to be 0. So do that.
     for (int i = 0; i < image.rows; i++)
