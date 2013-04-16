@@ -288,14 +288,10 @@ static PyObject* pyopencv_from(const Mat& m)
 PyObject* wrap_thin(PyObject* image, bool need_boundary_smoothing,
                          bool need_acute_angle_emphasis, bool destair)
 {
-    std::cout << "Here" << std::endl;
     cv::Mat cvImage;
     pyopencv_to(image, cvImage); // From OpenCV's source
-    std::cout << "Converted to Mat" << std::endl;
     thin(cvImage, need_boundary_smoothing, need_acute_angle_emphasis, destair);
-    std::cout << "Thinning done" << std::endl;
     PyObject *ret = pyopencv_from(cvImage);
-    std::cout << "Converted to PyObject*" << std::endl;
     return ret;
 }
 
