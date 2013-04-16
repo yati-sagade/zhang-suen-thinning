@@ -1,152 +1,16 @@
+#include "../zhangsuen.h"
+#include <Python.h>
 #include <boost/python.hpp>
 #include <boost/python/docstring_options.hpp>
-#include <boost/numpy.hpp>
 #include <boost/scoped_array.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+#include "numpy/ndarrayobject.h"
+#include <string> 
 #include <iostream>
-#include <sstream>
-
-#include "zhangsuen.h"
-
-typedef unsigned char uchar_t;
 
 namespace py = boost::python;
-namespace np = boost::numpy;
-
-/**
- * ndarray_to_mat(const np::ndarray& array, cv::Mat& result)
- *
- * Args:
- *  array: The input boost::numpy::ndarray. Must be 2D and the data type
- *         should be unsigned char. Also, the inner data alignment should be
- *         row major.
- *
- *  result: The resulting cv::Mat. It is assumed to be initialized to 
- *          have appropriate number of rows and columns
- * 
- * NOTE: The memory is NOT shared between the input ndarray and the resultant
- *       mat, unlike the reverse ndarray_to_mat() function.
- * 
- */
-void ndarray_to_mat(const np::ndarray& array, cv::Mat& result)
-{
-    // Ensure dtype is unsigned char
-    if (array.get_dtype() != np::dtype::get_builtin<uchar_t>())
-    {
-        np::dtype need_dtype = np::dtype::get_builtin<uchar_t>();
-        std::stringstream ss;
-        ss << "Incorrect data type: " 
-           << "Expected: " << py::extract<const char*>(py::str(need_dtype))
-           << ", Got: " << py::extract<const char*>(py::str(array.get_dtype()));
-        PyErr_SetString(PyExc_TypeError, ss.str().c_str());
-        py::throw_error_already_set();
-    }
-    // Ensure the array is 2D
-    if (array.get_nd() != 2)
-    {
-        std::stringstream ss;
-        ss << "Expecting a 2D array, got a " << array.get_nd() << " array.";
-        PyErr_SetString(PyExc_TypeError, ss.str().c_str());
-        py::throw_error_already_set();
-    }
-    // Ensure the array is row major
-    if (!(array.get_flags() & np::ndarray::C_CONTIGUOUS))
-    {
-        PyErr_SetString(PyExc_TypeError, "Array must be row major contiguous");
-        py::throw_error_already_set();
-    }
-    uchar_t *data = reinterpret_cast<uchar_t*>(array.get_data());
-    int row_incr = array.strides(0) / sizeof(*data),
-        col_incr = array.strides(1) / sizeof(*data);
-    uchar_t *iter;
-    int rows = array.shape(0), cols = array.shape(1);
-    for (int i = 0; i < rows; i++)
-    {
-        iter = data + i * row_incr;
-        uchar_t *row = result.ptr<uchar_t>(i);
-        for (int j = 0; j < cols; j++)
-        {
-            *(row + j) = *(iter + j * col_incr); 
-        }
-    }
-}
-
-// Return an ndarray that holds the same information as the underlying cv::Mat
-// NOTE: The memory is shared between the returned ndarray and the input image.
-static np::ndarray mat_to_ndarray(const cv::Mat& image, bool share_mem=true)
-{
-    uchar_t* data = image.data;
-    // Our images are all grayscale, so the datatype will be (the numpy
-    // equivalent of) uchar_t
-    np::dtype type(np::dtype::get_builtin<uchar_t>());
-    // This is the shape of the resulting ndarray, the number of rows and the
-    // number of columns.
-    py::tuple shape = py::make_tuple(image.rows, image.cols);
-    // Strides for rows and columns. Given a current position in a 2D array, 
-    // the row stride is the number of bytes to be traversed from the current
-    // position to get to the corresponding column in the next row. The column
-    // stride is the number of bytes to be traversed from the current position
-    // to get to the next element(column) in the same row.
-    py::tuple strides = py::make_tuple(image.step[0] * sizeof(*data), 
-                                       image.step[1] * sizeof(*data));
-    // The owner of the resulting ndarray. Since we are sharing the memory used
-    // by the |image| and the resulting ndarray, we need the resultant to hold
-    // a reference to this piece of memory. Since the resultant array holds
-    // a reference to its owner object, it is prevented from being deallocated
-    // by the GC.
-    if (share_mem) 
-    {
-        //TODO: This doesn't seem to work as the thinned image, when viewed
-        //from Python, is all screwed up.
-        np::ndarray array = np::from_data(data, type, shape, strides, py::object());
-        return array;
-    }
-    else
-    {
-        np::ndarray array(np::zeros(shape, type));
-        uchar_t *result_data = reinterpret_cast<uchar_t*>(array.get_data());
-        int row_incr = array.strides(0) / sizeof(*data),
-            col_incr = array.strides(1) / sizeof(*data);
-        int mat_row_incr = image.step[0], mat_col_incr = image.step[1];
-        for (int i = 0; i < image.rows; i++)
-        {
-            uchar_t *result_iter = result_data + i * row_incr;
-            uchar_t *mat_iter = data + i * mat_row_incr;
-            for (int j = 0; j < image.cols; j++, result_iter += col_incr, mat_iter += mat_col_incr)
-            {
-                *result_iter = *mat_iter;
-            }
-        }
-        return array;
-    }
-}
-
-void show(const std::string& window, const cv::Mat& mat)
-{
-    cv::namedWindow(window, CV_WINDOW_NORMAL);
-    cv::imshow(window, mat);
-    cv::waitKey(0);
-}
-
-void show(const std::string& window, const np::ndarray& array)
-{
-    cv::Mat img(array.shape(0), array.shape(1), CV_8U);
-    ndarray_to_mat(array, img);
-    show(window, img);
-}
-
-
-static np::ndarray wrap_thin(const np::ndarray& image,
-                             bool need_boundary_smoothing=false,
-                             bool need_acute_angle_emphasis=false,
-                             bool destair=false)
-{
-    cv::Mat mat(image.shape(0), image.shape(1), CV_8U);
-    ndarray_to_mat(image, mat);
-    thin(mat, need_boundary_smoothing, need_acute_angle_emphasis, destair);
-    return mat_to_ndarray(mat, false /* don't share memory */);
-}
 
 static const std::string docstring_thin( 
 "Perform Zhang-Suen thinning on `image`.\n\n"
@@ -169,13 +33,281 @@ static const std::string docstring_thin(
 "                   Default false.\n");
 
 
+// The following conversion functions are taken from OpenCV's cv2.cpp file inside modules/python/src2 folder.
+static PyObject* opencv_error = 0;
+
+static int failmsg(const char *fmt, ...)
+{
+    char str[1000];
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(str, sizeof(str), fmt, ap);
+    va_end(ap);
+
+    PyErr_SetString(PyExc_TypeError, str);
+    return 0;
+}
+
+class PyAllowThreads
+{
+public:
+    PyAllowThreads() : _state(PyEval_SaveThread()) {}
+    ~PyAllowThreads()
+    {
+        PyEval_RestoreThread(_state);
+    }
+private:
+    PyThreadState* _state;
+};
+
+class PyEnsureGIL
+{
+public:
+    PyEnsureGIL() : _state(PyGILState_Ensure()) {}
+    ~PyEnsureGIL()
+    {
+        PyGILState_Release(_state);
+    }
+private:
+    PyGILState_STATE _state;
+};
+
+#define ERRWRAP2(expr) \
+try \
+{ \
+    PyAllowThreads allowThreads; \
+    expr; \
+} \
+catch (const cv::Exception &e) \
+{ \
+    PyErr_SetString(opencv_error, e.what()); \
+    return 0; \
+}
+
+using namespace cv;
+
+static PyObject* failmsgp(const char *fmt, ...)
+{
+  char str[1000];
+
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(str, sizeof(str), fmt, ap);
+  va_end(ap);
+
+  PyErr_SetString(PyExc_TypeError, str);
+  return 0;
+}
+
+static size_t REFCOUNT_OFFSET = (size_t)&(((PyObject*)0)->ob_refcnt) +
+    (0x12345678 != *(const size_t*)"\x78\x56\x34\x12\0\0\0\0\0")*sizeof(int);
+
+static inline PyObject* pyObjectFromRefcount(const int* refcount)
+{
+    return (PyObject*)((size_t)refcount - REFCOUNT_OFFSET);
+}
+
+static inline int* refcountFromPyObject(const PyObject* obj)
+{
+    return (int*)((size_t)obj + REFCOUNT_OFFSET);
+}
+
+class NumpyAllocator : public MatAllocator
+{
+public:
+    NumpyAllocator() {}
+    ~NumpyAllocator() {}
+
+    void allocate(int dims, const int* sizes, int type, int*& refcount,
+                  uchar*& datastart, uchar*& data, size_t* step)
+    {
+        PyEnsureGIL gil;
+
+        int depth = CV_MAT_DEPTH(type);
+        int cn = CV_MAT_CN(type);
+        const int f = (int)(sizeof(size_t)/8);
+        int typenum = depth == CV_8U ? NPY_UBYTE : depth == CV_8S ? NPY_BYTE :
+                      depth == CV_16U ? NPY_USHORT : depth == CV_16S ? NPY_SHORT :
+                      depth == CV_32S ? NPY_INT : depth == CV_32F ? NPY_FLOAT :
+                      depth == CV_64F ? NPY_DOUBLE : f*NPY_ULONGLONG + (f^1)*NPY_UINT;
+        int i;
+        npy_intp _sizes[CV_MAX_DIM+1];
+        for( i = 0; i < dims; i++ )
+        {
+            _sizes[i] = sizes[i];
+        }
+
+        if( cn > 1 )
+        {
+            /*if( _sizes[dims-1] == 1 )
+                _sizes[dims-1] = cn;
+            else*/
+                _sizes[dims++] = cn;
+        }
+
+        PyObject* o = PyArray_SimpleNew(dims, _sizes, typenum);
+
+        if(!o)
+        {
+            CV_Error_(CV_StsError, ("The numpy array of typenum=%d, ndims=%d can not be created", typenum, dims));
+        }
+        refcount = refcountFromPyObject(o);
+
+        npy_intp* _strides = PyArray_STRIDES(o);
+        for( i = 0; i < dims - (cn > 1); i++ )
+            step[i] = (size_t)_strides[i];
+        datastart = data = (uchar*)PyArray_DATA(o);
+    }
+
+    void deallocate(int* refcount, uchar*, uchar*)
+    {
+        PyEnsureGIL gil;
+        if( !refcount )
+            return;
+        PyObject* o = pyObjectFromRefcount(refcount);
+        Py_INCREF(o);
+        Py_DECREF(o);
+    }
+};
+
+NumpyAllocator g_numpyAllocator;
+
+enum { ARG_NONE = 0, ARG_MAT = 1, ARG_SCALAR = 2 };
+
+static int pyopencv_to(const PyObject* o, Mat& m, const char* name = "<unknown>", bool allowND=true)
+{
+    //NumpyAllocator g_numpyAllocator;
+    if(!o || o == Py_None)
+    {
+        if( !m.data )
+            m.allocator = &g_numpyAllocator;
+        return true;
+    }
+
+    if( !PyArray_Check(o) )
+    {
+        failmsg("%s is not a numpy array", name);
+        return false;
+    }
+
+    int typenum = PyArray_TYPE(o);
+    int type = typenum == NPY_UBYTE ? CV_8U : typenum == NPY_BYTE ? CV_8S :
+               typenum == NPY_USHORT ? CV_16U : typenum == NPY_SHORT ? CV_16S :
+               typenum == NPY_INT || typenum == NPY_LONG ? CV_32S :
+               typenum == NPY_FLOAT ? CV_32F :
+               typenum == NPY_DOUBLE ? CV_64F : -1;
+
+    if( type < 0 )
+    {
+        failmsg("%s data type = %d is not supported", name, typenum);
+        return false;
+    }
+
+    int ndims = PyArray_NDIM(o);
+    if(ndims >= CV_MAX_DIM)
+    {
+        failmsg("%s dimensionality (=%d) is too high", name, ndims);
+        return false;
+    }
+
+    int size[CV_MAX_DIM+1];
+    size_t step[CV_MAX_DIM+1], elemsize = CV_ELEM_SIZE1(type);
+    const npy_intp* _sizes = PyArray_DIMS(o);
+    const npy_intp* _strides = PyArray_STRIDES(o);
+    bool transposed = false;
+
+    for(int i = 0; i < ndims; i++)
+    {
+        size[i] = (int)_sizes[i];
+        step[i] = (size_t)_strides[i];
+    }
+
+    if( ndims == 0 || step[ndims-1] > elemsize ) {
+        size[ndims] = 1;
+        step[ndims] = elemsize;
+        ndims++;
+    }
+
+    if( ndims >= 2 && step[0] < step[1] )
+    {
+        std::swap(size[0], size[1]);
+        std::swap(step[0], step[1]);
+        transposed = true;
+    }
+
+    if( ndims == 3 && size[2] <= CV_CN_MAX && step[1] == elemsize*size[2] )
+    {
+        ndims--;
+        type |= CV_MAKETYPE(0, size[2]);
+    }
+
+    if( ndims > 2 && !allowND )
+    {
+        failmsg("%s has more than 2 dimensions", name);
+        return false;
+    }
+
+    m = Mat(ndims, size, type, PyArray_DATA(o), step);
+
+    if( m.data )
+    {
+        m.refcount = refcountFromPyObject(o);
+        m.addref(); // protect the original numpy array from deallocation
+                    // (since Mat destructor will decrement the reference counter)
+    };
+    m.allocator = &g_numpyAllocator;
+
+    if( transposed )
+    {
+        Mat tmp;
+        tmp.allocator = &g_numpyAllocator;
+        transpose(m, tmp);
+        m = tmp;
+    }
+    return true;
+}
+
+static PyObject* pyopencv_from(const Mat& m)
+{
+    if( !m.data )
+        Py_RETURN_NONE;
+    Mat temp, *p = (Mat*)&m;
+    if(!p->refcount || p->allocator != &g_numpyAllocator)
+    {
+        temp.allocator = &g_numpyAllocator;
+        m.copyTo(temp);
+        p = &temp;
+    }
+    p->addref();
+    return pyObjectFromRefcount(p->refcount);
+}
+
+// The conversions functions above are taken from OpenCV. The following function is 
+// what we define to access the C++ code we are interested in.
+PyObject* wrap_thin(PyObject* image, bool need_boundary_smoothing,
+                         bool need_acute_angle_emphasis, bool destair)
+{
+    std::cout << "Here" << std::endl;
+    cv::Mat cvImage;
+    pyopencv_to(image, cvImage); // From OpenCV's source
+    std::cout << "Converted to Mat" << std::endl;
+    thin(cvImage, need_boundary_smoothing, need_acute_angle_emphasis, destair);
+    std::cout << "Thinning done" << std::endl;
+    PyObject *ret = pyopencv_from(cvImage);
+    std::cout << "Converted to PyObject*" << std::endl;
+    return ret;
+}
+
+static void init()
+{
+    Py_Initialize();
+    import_array();
+}
 
 BOOST_PYTHON_MODULE(zhangsuen)
 {
-    // Initialize the Python runtime and the Boost.Numpy lib. 
-    // This is a must! Otherwise we will get a segfault.
-    Py_Initialize();
-    np::initialize();
+    init();
     py::docstring_options doc_options;
     doc_options.disable_cpp_signatures();
     py::def("thin", wrap_thin, docstring_thin.c_str());
