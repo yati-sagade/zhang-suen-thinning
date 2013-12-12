@@ -23,7 +23,7 @@ Prerequisites
 ### Building
 
 The library exposing the function that performs Zhang-Suen thinning can be
-build in two ways. For use in C++ programs, the static llibrary
+built in two ways. For use in C++ programs, the static llibrary
 `libzhangsuen.a` can be produced by going into the toplevel directory for the
 project and typing
     
